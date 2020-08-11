@@ -1,0 +1,101 @@
+---
+title: "Weight Lifting Prediction Model"
+---
+Soo Ingrisone
+08/10/20
+
+## Overview
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. The data is collected from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The goal of this project is to predict the manner in which they did the exercise.The report describes how the model is built, how cross validation is used, expected out of sample error, and why the choices are made. Finally, the suggested prediction model is used to predict 20 different test cases.
+
+## Data Processing
+Load the neceaary library
+```{r, echo=TRUE}
+library(caret)
+library(rattle)
+```
+
+First, the data is imported from the websites.
+```{r, echo=TRUE}
+url_train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url_test <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(url_train, destfile = "pml-training.csv")
+download.file(url_test, destfile = "pml-testing.csv")
+training<-read.csv('pml-training.csv', sep=',', header=TRUE)
+testing<-read.csv('pml-testing.csv', sep=',', header=TRUE)
+dim(training); dim(testing)
+```
+The choice of specific predictors is based on removing variables containing many NAs. In addition, columns that are not associated with exercise are deleted, i.e., “X”, “user_name”, “raw_timestamp_part_1”, “raw_timestamp_part_2”, “cvtd_timestamp”, “new_window”, “num_window”. They are the first seven columns in the data. The same rule is applied to testing data.
+``` {r, echo=TRUE}
+training <- training[, colSums(is.na(training)) == 0]
+training <- training[, -(1:7)]
+testing <- testing[, colSums(is.na(testing)) == 0]
+testing <- testing[, -(1:7)]
+```
+The training data is split into train and validation sets with 60/40 ratio. In order to be reproducible, the seed is set to 123.
+```{r, echo=TRUE}
+set.seed(123)
+inTrain = createDataPartition(training$classe, p = .6, list=FALSE)
+train_set = training[ inTrain,]
+validation_set = training[-inTrain,]
+dim(train_set); dim(validation_set)
+```
+The features are selected further by removing near zero variance predictors, with the nearZeroVar function.
+```{r, echo=TRUE}
+nzv <- nearZeroVar(train_set)
+train_set <- train_set[, -nzv]
+validation_set  <- validation_set[, -nzv]
+dim(train_set); dim(validation_set)
+```
+Therefore, the cleaned train set contains 11776 observations with 53 features. The cleaned validation set contains 7846 observations with 53 features.   
+
+## Model Selection
+
+### 1. Linear Discriminant Analysis
+
+```{r, echo=TRUE}
+fit_lda <- train(classe~., method="lda", data = train_set, trControl = trainControl(method="cv"), number=5, repeats=1)
+pred_lda <- predict(fit_lda, validation_set)
+confusionMatrix(pred_lda, as.factor(validation_set$classe))
+```
+The overall accuracy of the model classification is 0.6886 using 5-fold cross validation method.
+
+### 2. Recursive Partitioning And Regression Trees model
+
+```{r, echo=TRUE}
+fit_rpart <-  train(classe~., method="rpart", data = train_set, trControl=trainControl(method="cv", number=3, allowParallel=T))
+pred_rpart <- predict(fit_rpart, validation_set)
+confusionMatrix(pred_rpart, as.factor(validation_set$classe))
+fancyRpartPlot(fit_rpart$finalModel, sub="")
+```
+
+Basd on 3-fold cross validation method, the overall accuracy of the model classification is 0.5005. 
+
+### 3. Gradient Boost Model
+
+```{r, echo=TRUE}
+fit_gbm <-  train(classe~., method="gbm", data = train_set, verbose=FALSE, trControl=trainControl(method="cv", number=2, allowParallel=T))
+pred_gbm <- predict(fit_gbm, validation_set)
+confusionMatrix(pred_gbm, as.factor(validation_set$classe))
+plot(fit_gbm)
+```
+
+The 2-fold cross validation method is used to fit the model. The overall accuracy of the model classification is 0.9601. The best tuning parameters was 150 trees, with depth 3, shrinkage = 0.1 and number of min observations in node = 10.
+
+### 4. Random Forest model
+
+```{r, echo=TRUE}
+fit_rf <-  train(classe~., method="rf", data = train_set, trControl=trainControl(method="cv", number=2, allowParallel=T))
+pred_rf <- predict(fit_rf, validation_set)
+confusionMatrix(pred_rf, as.factor(validation_set$classe))
+```
+
+The overall accuracy of the model classification is 0.9927 using 2-fold cross validation method.
+
+### Final Model
+The accuracy of the random forest model is, as expected, much higher than other models, over 0.99. Random Forest model performed better and constitutes the model of choice for predicting the 20 observations of the original pml-testing.csv dataset.
+ 
+```{r, echo=TRUE}
+prediction <- predict(fit_rf, testing)
+prediction
+```
+
